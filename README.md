@@ -1,6 +1,6 @@
 # Chat WebSocket - NestJS + Next.js
 
-## Installation et Lancement
+## Installation et lancement
 
 ### 1. Backend NestJS
 
@@ -28,7 +28,7 @@ npm install
 npm run dev
 ```
 
-## Commandes Rapides
+## Commandes rapides
 
 ### Lancer les deux serveurs :
 
@@ -41,3 +41,7 @@ cd backend && npm run start:dev
 ```bash
 cd frontend && npm run dev
 ```
+
+## Équipe
+[Arthur VALENTIM]([url](https://github.com/Valentin460))
+[Fatoumata DIABY]([url](https://github.com/Fatoumatadiaby21))
