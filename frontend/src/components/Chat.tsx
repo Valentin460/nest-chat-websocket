@@ -37,7 +37,9 @@ export default function Chat({ user: initialUser, onLogout }: ChatProps) {
   const [isConnected, setIsConnected] = useState(false);
   const [user, setUser] = useState<User>(initialUser);
   const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
+  const [typingUsers, setTypingUsers] = useState<string[]>([]);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
     setUser(initialUser);
@@ -65,12 +67,12 @@ export default function Chat({ user: initialUser, onLogout }: ChatProps) {
     });
 
     newSocket.on('connect', () => {
-      console.log('Connected to chat server');
+      console.log('Connecté au serveur de chat');
       setIsConnected(true);
     });
 
     newSocket.on('disconnect', () => {
-      console.log('Disconnected from chat server');
+      console.log('Déconnecté du serveur de chat');
       setIsConnected(false);
     });
 
@@ -102,6 +104,11 @@ export default function Chat({ user: initialUser, onLogout }: ChatProps) {
       setConnectedUsers(users);
     });
 
+    newSocket.on('typingUsers', (usernames: string[]) => {
+      const filteredTypingUsers = usernames.filter(username => username !== user.username);
+      setTypingUsers(filteredTypingUsers);
+    });
+
     setSocket(newSocket);
 
     return () => {
@@ -113,7 +120,37 @@ export default function Chat({ user: initialUser, onLogout }: ChatProps) {
     e.preventDefault();
     if (newMessage.trim() && socket) {
       socket.emit('sendMessage', { message: newMessage.trim() });
+      socket.emit('stopTyping');
+      if (typingTimeoutRef.current) {
+        clearTimeout(typingTimeoutRef.current);
+        typingTimeoutRef.current = null;
+      }
       setNewMessage('');
+    }
+  };
+
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value;
+    setNewMessage(value);
+
+    if (!socket) return;
+
+    if (value.trim() && !typingTimeoutRef.current) {
+      socket.emit('startTyping');
+    }
+
+    if (typingTimeoutRef.current) {
+      clearTimeout(typingTimeoutRef.current);
+    }
+
+    if (value.trim()) {
+      typingTimeoutRef.current = setTimeout(() => {
+        socket.emit('stopTyping');
+        typingTimeoutRef.current = null;
+      }, 2000);
+    } else {
+      socket.emit('stopTyping');
+      typingTimeoutRef.current = null;
     }
   };
 
@@ -131,6 +168,18 @@ export default function Chat({ user: initialUser, onLogout }: ChatProps) {
       hour: '2-digit',
       minute: '2-digit',
     });
+  };
+
+  const getTypingIndicatorText = () => {
+    if (typingUsers.length === 0) return '';
+    
+    if (typingUsers.length === 1) {
+      return `${typingUsers[0]} est en train d'écrire...`;
+    } else if (typingUsers.length === 2) {
+      return `${typingUsers[0]} et ${typingUsers[1]} sont en train d'écrire...`;
+    } else {
+      return `${typingUsers.length} personnes sont en train d'écrire...`;
+    }
   };
 
   return (
@@ -232,12 +281,25 @@ export default function Chat({ user: initialUser, onLogout }: ChatProps) {
               </div>
             </div>
 
+            {typingUsers.length > 0 && (
+              <div className="px-4 py-2 bg-gray-100 border-t border-gray-200">
+                <div className="text-sm text-gray-600 italic flex items-center gap-2">
+                  <div className="flex space-x-1">
+                    <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce"></div>
+                    <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{animationDelay: '0.1s'}}></div>
+                    <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{animationDelay: '0.2s'}}></div>
+                  </div>
+                  <span>{getTypingIndicatorText()}</span>
+                </div>
+              </div>
+            )}
+
             <form onSubmit={sendMessage} className="p-4 bg-white border-t border-gray-200">
               <div className="flex gap-2">
                 <input
                   type="text"
                   value={newMessage}
-                  onChange={(e) => setNewMessage(e.target.value)}
+                  onChange={handleInputChange}
                   placeholder="Tapez votre message..."
                   className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-gray-500 focus:border-transparent outline-none text-black placeholder-black"
                   disabled={!isConnected}

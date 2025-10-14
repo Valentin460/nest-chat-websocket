@@ -14,7 +14,7 @@ export class UsersController {
     const { password, ...result } = user;
     return {
       user: result,
-      message: 'Profile updated successfully',
+      message: 'Profil modifié avec succès',
     };
   }
 }

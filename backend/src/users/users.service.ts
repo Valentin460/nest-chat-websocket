@@ -20,14 +20,14 @@ export class UsersService {
       where: { email: userData.email },
     });
     if (existingUserByEmail) {
-      throw new ConflictException('User with this email already exists');
+      throw new ConflictException('Un utilisateur avec cet email existe déjà');
     }
 
     const existingUserByUsername = await this.usersRepository.findOne({
       where: { username: userData.username },
     });
     if (existingUserByUsername) {
-      throw new ConflictException('User with this username already exists');
+      throw new ConflictException('Un utilisateur avec ce nom d\'utilisateur existe déjà');
     }
 
     const saltRounds = 10;
@@ -59,7 +59,7 @@ export class UsersService {
         where: { username: updateData.username },
       });
       if (existingUser && existingUser.id !== id) {
-        throw new ConflictException('Username already exists');
+        throw new ConflictException('Ce nom d\'utilisateur existe déjà');
       }
     }
 

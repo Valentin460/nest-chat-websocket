@@ -22,7 +22,7 @@ export class AuthService {
     return {
       access_token,
       user: result,
-      message: 'User registered successfully',
+      message: 'Utilisateur enregistré avec succès',
     };
   }
 
@@ -30,7 +30,7 @@ export class AuthService {
     const user = await this.validateUser(loginDto.email, loginDto.password);
     
     if (!user) {
-      throw new UnauthorizedException('Invalid credentials');
+      throw new UnauthorizedException('Identifiants invalides');
     }
 
     const { password, ...result } = user;
@@ -41,7 +41,7 @@ export class AuthService {
     return {
       access_token,
       user: result,
-      message: 'Login successful',
+      message: 'Connexion réussie',
     };
   }
 

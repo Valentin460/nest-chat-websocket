@@ -28,6 +28,7 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
   server: Server;
 
   private connectedUsers: Map<string, ConnectedUser> = new Map();
+  private typingUsers: Map<string, ConnectedUser> = new Map();
 
   constructor(
     private jwtService: JwtService,
@@ -69,9 +70,9 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
         Array.from(this.connectedUsers.values())
       );
 
-      console.log(`User ${user.username} connected to chat`);
+      console.log(`Utilisateur ${user.username} connecté au chat`);
     } catch (error) {
-      console.error('Connection error:', error);
+      console.error('Erreur de connexion:', error);
       client.disconnect();
     }
   }
@@ -91,7 +92,7 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
         Array.from(this.connectedUsers.values())
       );
 
-      console.log(`User ${user.username} disconnected from chat`);
+      console.log(`Utilisateur ${user.username} déconnecté du chat`);
     }
   }
 
@@ -116,5 +117,27 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
   @SubscribeMessage('getConnectedUsers')
   handleGetConnectedUsers(@ConnectedSocket() client: Socket) {
     client.emit('connectedUsers', Array.from(this.connectedUsers.values()));
+  }
+
+  @SubscribeMessage('startTyping')
+  handleStartTyping(@ConnectedSocket() client: Socket) {
+    const user = this.connectedUsers.get(client.id);
+    if (!user) return;
+
+    this.typingUsers.set(client.id, user);
+    
+    const typingUsernames = Array.from(this.typingUsers.values()).map(u => u.username);
+    this.server.to('general').emit('typingUsers', typingUsernames);
+  }
+
+  @SubscribeMessage('stopTyping')
+  handleStopTyping(@ConnectedSocket() client: Socket) {
+    const user = this.connectedUsers.get(client.id);
+    if (!user) return;
+
+    this.typingUsers.delete(client.id);
+    
+    const typingUsernames = Array.from(this.typingUsers.values()).map(u => u.username);
+    this.server.to('general').emit('typingUsers', typingUsernames);
   }
 }
