@@ -43,5 +43,5 @@ cd frontend && npm run dev
 ```
 
 ## Équipe
-- [Arthur VALENTIM](https://www.github.com/Valentin460)
+- [Arthur VALENTIM](https://github.com/Valentin460)
 - [Fatoumata DIABY](https://github.com/Fatoumatadiaby21)
