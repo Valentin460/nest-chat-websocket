@@ -14,6 +14,9 @@ export class User {
   @Column()
   password: string;
 
+  @Column({ default: '#6B7280' })
+  displayColor: string;
+
   @CreateDateColumn()
   createdAt: Date;
 

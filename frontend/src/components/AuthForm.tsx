@@ -25,7 +25,7 @@ export default function AuthForm({ onSuccess }: AuthFormProps) {
   const [message, setMessage] = useState({ text: '', type: '' });
   const [isLoading, setIsLoading] = useState(false);
 
-  const API_BASE_URL = 'http://localhost:3000';
+  const API_BASE_URL = 'http://localhost:3001';
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setFormData({
@@ -108,7 +108,7 @@ export default function AuthForm({ onSuccess }: AuthFormProps) {
               onChange={handleInputChange}
               required={!isLogin}
               minLength={3}
-              className="w-full px-4 py-3 border-2 border-gray-200 rounded-lg focus:border-purple-500 focus:outline-none transition duration-300 text-gray-700"
+              className="w-full px-4 py-3 border-2 border-gray-200 rounded-lg focus:border-gray-500 focus:outline-none transition duration-300 text-gray-700"
             />
           </div>
         )}
@@ -124,7 +124,7 @@ export default function AuthForm({ onSuccess }: AuthFormProps) {
             value={formData.email}
             onChange={handleInputChange}
             required
-            className="w-full px-4 py-3 border-2 border-gray-200 rounded-lg focus:border-purple-500 focus:outline-none transition duration-300 text-gray-700"
+            className="w-full px-4 py-3 border-2 border-gray-200 rounded-lg focus:border-gray-500 focus:outline-none transition duration-300 text-gray-700"
           />
         </div>
 
@@ -140,14 +140,14 @@ export default function AuthForm({ onSuccess }: AuthFormProps) {
             onChange={handleInputChange}
             required
             minLength={6}
-            className="w-full px-4 py-3 border-2 border-gray-200 rounded-lg focus:border-purple-500 focus:outline-none transition duration-300 text-gray-700"
+            className="w-full px-4 py-3 border-2 border-gray-200 rounded-lg focus:border-gray-500 focus:outline-none transition duration-300 text-gray-700"
           />
         </div>
 
         <button
           type="submit"
           disabled={isLoading}
-          className="w-full bg-gradient-to-r from-purple-500 to-purple-600 hover:from-purple-600 hover:to-purple-700 text-white font-semibold py-3 px-4 rounded-lg transition duration-300 ease-in-out transform hover:-translate-y-1 hover:shadow-lg uppercase tracking-wider disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none"
+          className="w-full bg-gradient-to-r from-gray-600 to-gray-700 hover:from-gray-700 hover:to-gray-800 text-white font-semibold py-3 px-4 rounded-lg transition duration-300 ease-in-out transform hover:-translate-y-1 hover:shadow-lg uppercase tracking-wider disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none"
         >
           {isLoading 
             ? (isLogin ? 'Connexion...' : 'Inscription...') 
@@ -160,7 +160,7 @@ export default function AuthForm({ onSuccess }: AuthFormProps) {
         {isLogin ? "Pas encore de compte ? " : "Déjà un compte ? "}
         <button
           onClick={switchForm}
-          className="text-purple-600 font-semibold hover:text-purple-700 hover:underline transition duration-300"
+          className="text-gray-600 font-semibold hover:text-gray-700 hover:underline transition duration-300"
         >
           {isLogin ? "S'inscrire" : "Se connecter"}
         </button>

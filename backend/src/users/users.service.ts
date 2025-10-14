@@ -52,4 +52,18 @@ export class UsersService {
   async validatePassword(password: string, hashedPassword: string): Promise<boolean> {
     return bcrypt.compare(password, hashedPassword);
   }
+
+  async updateProfile(id: number, updateData: { username?: string; displayColor?: string }): Promise<User> {
+    if (updateData.username) {
+      const existingUser = await this.usersRepository.findOne({
+        where: { username: updateData.username },
+      });
+      if (existingUser && existingUser.id !== id) {
+        throw new ConflictException('Username already exists');
+      }
+    }
+
+    await this.usersRepository.update(id, updateData);
+    return this.findById(id);
+  }
 }
