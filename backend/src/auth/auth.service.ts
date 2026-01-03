@@ -1,57 +1,29 @@
-import { Injectable, UnauthorizedException } from '@nestjs/common';
-import { JwtService } from '@nestjs/jwt';
+import {
+  Injectable,
+  UnauthorizedException,
+  ConflictException,
+} from '@nestjs/common';
 import { UsersService } from '../users/users.service';
-import { RegisterDto } from './dto/register.dto';
-import { LoginDto } from './dto/login.dto';
+import { AuthResponseDto } from './dto/auth-response.dto';
 
 @Injectable()
 export class AuthService {
-  constructor(
-    private usersService: UsersService,
-    private jwtService: JwtService,
-  ) {}
+  constructor(private usersService: UsersService) {}
 
-  async register(registerDto: RegisterDto) {
-    const user = await this.usersService.create(registerDto);
-    
-    const { password, ...result } = user;
-    
-    const payload = { email: user.email, sub: user.id, username: user.username };
-    const access_token = this.jwtService.sign(payload);
-
-    return {
-      access_token,
-      user: result,
-      message: 'Utilisateur enregistré avec succès',
-    };
+  async register(username: string, password: string): Promise<AuthResponseDto> {
+    const existingUser = await this.usersService.findByUsername(username);
+    if (existingUser) {
+      throw new ConflictException("Ce nom d'utilisateur est déjà pris");
+    }
+    const user = await this.usersService.create(username, password);
+    return new AuthResponseDto(user.id, user.username, user.color);
   }
 
-  async login(loginDto: LoginDto) {
-    const user = await this.validateUser(loginDto.email, loginDto.password);
-    
-    if (!user) {
+  async login(username: string, password: string): Promise<AuthResponseDto> {
+    const user = await this.usersService.findByUsername(username);
+    if (!user || user.password !== password) {
       throw new UnauthorizedException('Identifiants invalides');
     }
-
-    const { password, ...result } = user;
-    
-    const payload = { email: user.email, sub: user.id, username: user.username };
-    const access_token = this.jwtService.sign(payload);
-
-    return {
-      access_token,
-      user: result,
-      message: 'Connexion réussie',
-    };
-  }
-
-  async validateUser(email: string, password: string): Promise<any> {
-    const user = await this.usersService.findByEmail(email);
-    
-    if (user && await this.usersService.validatePassword(password, user.password)) {
-      return user;
-    }
-    
-    return null;
+    return new AuthResponseDto(user.id, user.username, user.color);
   }
 }
