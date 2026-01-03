@@ -1,17 +1,18 @@
-import { IsEmail, IsNotEmpty, IsString, MinLength, IsOptional, Matches } from 'class-validator';
+import { IsString, MinLength, MaxLength } from 'class-validator';
 
 export class RegisterDto {
   @IsString()
-  @IsNotEmpty()
-  @MinLength(3)
+  @MinLength(3, {
+    message: "Le nom d'utilisateur doit contenir au moins 3 caractères",
+  })
+  @MaxLength(20, {
+    message: "Le nom d'utilisateur ne peut pas dépasser 20 caractères",
+  })
   username: string;
 
-  @IsEmail()
-  @IsNotEmpty()
-  email: string;
-
   @IsString()
-  @IsNotEmpty()
-  @MinLength(6)
+  @MinLength(6, {
+    message: 'Le mot de passe doit contenir au moins 6 caractères',
+  })
   password: string;
 }

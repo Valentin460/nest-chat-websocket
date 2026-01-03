@@ -1,26 +1,32 @@
-import { Module } from '@nestjs/common';
-import { ConfigModule } from '@nestjs/config';
+import { Module, OnModuleInit } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { AuthModule } from './auth/auth.module';
 import { UsersModule } from './users/users.module';
 import { ChatModule } from './chat/chat.module';
-import { User } from './users/entities/user.entity';
+import { ChatService } from './chat/chat.service';
 
 @Module({
   imports: [
-    ConfigModule.forRoot({
-      isGlobal: true,
-    }),
     TypeOrmModule.forRoot({
-      type: 'sqlite',
-      database: 'chat.db',
-      entities: [User],
+      type: 'postgres',
+      host: 'localhost',
+      port: 5432,
+      username: 'postgres',
+      password: 'root',
+      database: 'chat_app',
+      schema: 'public',
+      entities: [__dirname + '/**/*.entity{.ts,.js}'],
       synchronize: true,
-      logging: true,
     }),
     AuthModule,
     UsersModule,
     ChatModule,
   ],
 })
-export class AppModule {}
+export class AppModule implements OnModuleInit {
+  constructor(private chatService: ChatService) {}
+
+  async onModuleInit() {
+    await this.chatService.initGeneralRoom();
+  }
+}
