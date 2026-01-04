@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import AuthForm from '@/components/AuthForm';
-import Chat from '@/components/Chat';
+import ChatWithRooms from '@/components/ChatWithRooms';
 
 interface User {
   id: number;
@@ -37,7 +37,7 @@ export default function Home() {
   }, []);
 
   if (user) {
-    return <Chat user={user} onLogout={handleLogout} />;
+    return <ChatWithRooms user={user} onLogout={handleLogout} />;
   }
 
   return (

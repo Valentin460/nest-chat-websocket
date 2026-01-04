@@ -4,7 +4,7 @@ import { useState, useEffect, useRef } from 'react';
 import { io, Socket } from 'socket.io-client';
 import ProfileModal from './ProfileModal';
 import CreateRoomModal from './CreateRoomModal';
-import { FaThumbsUp, FaHeart, FaLaughSquint, FaFire, FaPlus, FaComments, FaDoorOpen } from 'react-icons/fa';
+import { FaThumbsUp, FaHeart, FaLaughSquint, FaFire, FaPlus, FaComments, FaDoorOpen, FaUsers } from 'react-icons/fa';
 import { HiSparkles } from 'react-icons/hi2';
 
 interface User {
@@ -41,7 +41,7 @@ interface ChatProps {
   onLogout: () => void;
 }
 
-export default function Chat({ user: initialUser, onLogout }: ChatProps) {
+export default function ChatWithRooms({ user: initialUser, onLogout }: ChatProps) {
   const [socket, setSocket] = useState<Socket | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [newMessage, setNewMessage] = useState('');
@@ -53,6 +53,8 @@ export default function Chat({ user: initialUser, onLogout }: ChatProps) {
   const [typingUsers, setTypingUsers] = useState<string[]>([]);
   const [rooms, setRooms] = useState<Room[]>([]);
   const [currentRoom, setCurrentRoom] = useState<Room | null>(null);
+  const [generalChatMessages, setGeneralChatMessages] = useState<Message[]>([]);
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -67,6 +69,29 @@ export default function Chat({ user: initialUser, onLogout }: ChatProps) {
   useEffect(() => {
     scrollToBottom();
   }, [messages]);
+
+  const loadRooms = async () => {
+    try {
+      const token = localStorage.getItem('token');
+      console.log('Chargement des salons...');
+      const response = await fetch('http://localhost:3001/rooms', {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+      const data = await response.json();
+      console.log('Données reçues:', data);
+      console.log('Salons:', data.rooms);
+      setRooms(data.rooms || []);
+      console.log('State rooms mis à jour');
+    } catch (error) {
+      console.error('Erreur lors du chargement des salons:', error);
+    }
+  };
+
+  useEffect(() => {
+    loadRooms();
+  }, []);
 
   useEffect(() => {
     const token = localStorage.getItem('token');
@@ -91,28 +116,56 @@ export default function Chat({ user: initialUser, onLogout }: ChatProps) {
       setIsConnected(false);
     });
 
+    newSocket.on('chatHistory', (history: Message[]) => {
+      console.log('Historique du chat général reçu:', history.length, 'messages');
+      setGeneralChatMessages(history);
+      if (!currentRoom) {
+        setMessages(history);
+      }
+    });
+
     newSocket.on('newMessage', (message: Message) => {
+      if (!currentRoom) {
+        setMessages((prev) => [...prev, message]);
+        setGeneralChatMessages((prev) => [...prev, message]);
+      }
+    });
+
+    newSocket.on('newRoomMessage', (message: Message) => {
       setMessages((prev) => [...prev, message]);
     });
 
+    newSocket.on('roomJoined', (data: { room: Room; messages: Message[] }) => {
+      setCurrentRoom(data.room);
+      const normalizedMessages = data.messages.map(msg => ({
+        ...msg,
+        timestamp: msg.timestamp || new Date().toISOString(),
+      }));
+      setMessages(normalizedMessages);
+    });
+
     newSocket.on('userJoined', (data: { username: string; message: string; timestamp: string }) => {
-      const systemMessage: Message = {
-        id: Date.now(),
-        username: 'Système',
-        message: data.message,
-        timestamp: data.timestamp,
-      };
-      setMessages((prev) => [...prev, systemMessage]);
+      if (!currentRoom) {
+        const systemMessage: Message = {
+          id: Date.now(),
+          username: 'Système',
+          message: data.message,
+          timestamp: data.timestamp,
+        };
+        setMessages((prev) => [...prev, systemMessage]);
+      }
     });
 
     newSocket.on('userLeft', (data: { username: string; message: string; timestamp: string }) => {
-      const systemMessage: Message = {
-        id: Date.now(),
-        username: 'Système',
-        message: data.message,
-        timestamp: data.timestamp,
-      };
-      setMessages((prev) => [...prev, systemMessage]);
+      if (!currentRoom) {
+        const systemMessage: Message = {
+          id: Date.now(),
+          username: 'Système',
+          message: data.message,
+          timestamp: data.timestamp,
+        };
+        setMessages((prev) => [...prev, systemMessage]);
+      }
     });
 
     newSocket.on('connectedUsers', (users: ConnectedUser[]) => {
@@ -150,7 +203,11 @@ export default function Chat({ user: initialUser, onLogout }: ChatProps) {
   const sendMessage = (e: React.FormEvent) => {
     e.preventDefault();
     if (newMessage.trim() && socket) {
-      socket.emit('sendMessage', { message: newMessage.trim() });
+      if (currentRoom) {
+        socket.emit('sendRoomMessage', { roomId: currentRoom.id, message: newMessage.trim() });
+      } else {
+        socket.emit('sendMessage', { message: newMessage.trim() });
+      }
       socket.emit('stopTyping');
       if (typingTimeoutRef.current) {
         clearTimeout(typingTimeoutRef.current);
@@ -167,7 +224,7 @@ export default function Chat({ user: initialUser, onLogout }: ChatProps) {
     if (!socket) return;
 
     if (value.trim() && !typingTimeoutRef.current) {
-      socket.emit('startTyping');
+      socket.emit('startTyping', { roomId: currentRoom?.id || null });
     }
 
     if (typingTimeoutRef.current) {
@@ -176,11 +233,11 @@ export default function Chat({ user: initialUser, onLogout }: ChatProps) {
 
     if (value.trim()) {
       typingTimeoutRef.current = setTimeout(() => {
-        socket.emit('stopTyping');
+        socket.emit('stopTyping', { roomId: currentRoom?.id || null });
         typingTimeoutRef.current = null;
       }, 2000);
     } else {
-      socket.emit('stopTyping');
+      socket.emit('stopTyping', { roomId: currentRoom?.id || null });
       typingTimeoutRef.current = null;
     }
   };
@@ -192,6 +249,27 @@ export default function Chat({ user: initialUser, onLogout }: ChatProps) {
     localStorage.removeItem('token');
     localStorage.removeItem('user');
     onLogout();
+  };
+
+  const joinRoom = (room: Room) => {
+    console.log('Tentative de rejoindre le salon:', room.name, 'ID:', room.id);
+    console.log('Socket connecté?', !!socket, 'isConnected:', isConnected);
+    if (socket) {
+      console.log('Émission de joinRoom vers le serveur...');
+      socket.emit('joinRoom', { roomId: room.id });
+      setIsSidebarOpen(false);
+    } else {
+      console.error('Pas de socket disponible');
+    }
+  };
+
+  const leaveRoom = () => {
+    if (socket && currentRoom) {
+      socket.emit('leaveRoom', { roomId: currentRoom.id });
+      setCurrentRoom(null);
+      setMessages(generalChatMessages);
+      setIsSidebarOpen(false);
+    }
   };
 
   const formatTime = (timestamp: string) => {
@@ -234,6 +312,12 @@ export default function Chat({ user: initialUser, onLogout }: ChatProps) {
     }
   };
 
+  const handleRoomCreated = async () => {
+    console.log('Salon créé, rechargement de la liste...');
+    await loadRooms();
+    console.log('Liste rechargée');
+  };
+
   const reactionIcons: Record<string, { icon: React.ReactElement; label: string }> = {
     'thumbsup': { icon: <FaThumbsUp className="w-4 h-4" />, label: 'J\'aime' },
     'heart': { icon: <FaHeart className="w-4 h-4" />, label: 'Cœur' },
@@ -243,54 +327,164 @@ export default function Chat({ user: initialUser, onLogout }: ChatProps) {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-500 via-gray-600 to-gray-700 p-6">
-      <div className="max-w-6xl mx-auto bg-white rounded-2xl shadow-2xl overflow-hidden">
+    <div className="min-h-screen bg-gradient-to-br from-gray-500 via-gray-600 to-gray-700">
+      <div className="h-screen bg-white overflow-hidden">
         <div className="bg-gradient-to-r from-gray-600 to-gray-700 text-white p-4">
           <div className="flex justify-between items-center">
-            <div>
-              <h1 className="text-2xl font-bold">Chat WebSocket</h1>
-              <div className="flex items-center gap-2 mt-1">
-                <div className={`w-2 h-2 rounded-full ${isConnected ? 'bg-green-400' : 'bg-red-400'}`}></div>
-                <span className="text-sm">
-                  {isConnected ? 'Connecté' : 'Déconnecté'} • {user.username}
-                </span>
+            <div className="flex items-center gap-3">
+              <button
+                onClick={() => setIsSidebarOpen(!isSidebarOpen)}
+                className="lg:hidden text-white p-2 hover:bg-gray-700 rounded-lg transition"
+                aria-label="Toggle menu"
+                title="Ouvrir/Fermer le menu"
+              >
+                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+                </svg>
+              </button>
+              <div>
+                <h1 className="text-xl md:text-2xl font-bold flex items-center gap-2">
+                  {currentRoom ? (
+                    <>
+                      <FaDoorOpen />
+                      <span className="truncate max-w-[150px] md:max-w-none">{currentRoom.name}</span>
+                    </>
+                  ) : (
+                    <>
+                      <FaComments />
+                      <span>Chat Général</span>
+                    </>
+                  )}
+                </h1>
+                <div className="flex items-center gap-2 mt-1">
+                  <div className={`w-2 h-2 rounded-full ${isConnected ? 'bg-green-400' : 'bg-red-400'}`}></div>
+                  <span className="text-xs md:text-sm">
+                    {isConnected ? 'Connecté' : 'Déconnecté'} • {user.username}
+                  </span>
+                </div>
               </div>
             </div>
-            <div className="flex gap-2">
+            <div className="flex gap-1 md:gap-2">
+              {currentRoom && (
+                <button
+                  onClick={leaveRoom}
+                  className="bg-orange-500 hover:bg-orange-600 px-2 md:px-4 py-2 rounded-lg font-medium transition duration-300 flex items-center gap-2"
+                  title="Quitter le salon"
+                >
+                  <FaDoorOpen />
+                  <span className="hidden sm:inline">Quitter le salon</span>
+                </button>
+              )}
               <button
                 onClick={() => setIsProfileModalOpen(true)}
-                className="bg-blue-500 hover:bg-blue-600 px-4 py-2 rounded-lg font-medium transition duration-300"
+                className="bg-blue-500 hover:bg-blue-600 px-2 md:px-4 py-2 rounded-lg font-medium transition duration-300"
+                title="Profil"
               >
-                Profil
+                <span className="hidden sm:inline">Profil</span>
+                <span className="sm:hidden">Profil</span>
               </button>
               <button
                 onClick={handleLogout}
-                className="bg-red-500 hover:bg-red-600 px-4 py-2 rounded-lg font-medium transition duration-300"
+                className="bg-red-500 hover:bg-red-600 px-2 md:px-4 py-2 rounded-lg font-medium transition duration-300"
+                title="Se déconnecter"
               >
-                Se déconnecter
+                <span className="hidden sm:inline">Se déconnecter</span>
+                <span className="sm:hidden">Se déconnecter</span>
               </button>
             </div>
           </div>
         </div>
 
-        <div className="flex h-96">
-          <div className="w-1/4 bg-gray-50 border-r border-gray-200 p-4">
-            <h3 className="font-semibold text-gray-700 mb-3">
-              Utilisateurs connectés ({connectedUsers.length})
-            </h3>
-            <div className="space-y-2">
-              {connectedUsers.map((connectedUser) => (
-                <div
-                  key={connectedUser.id}
-                  className="flex items-center gap-2 p-2 bg-white rounded-lg border"
+        <div className="flex relative" style={{ height: 'calc(100vh - 88px)' }}>
+          {isSidebarOpen && (
+            <div
+              className="fixed inset-0 bg-opacity-50 z-40 lg:hidden"
+              onClick={() => setIsSidebarOpen(false)}
+            />
+          )}
+          
+          <div className={`
+            ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'}
+            lg:translate-x-0 lg:relative
+            fixed lg:static inset-y-0 left-0 z-50
+            w-64 lg:w-1/4 bg-gray-50 border-r border-gray-200 p-4 overflow-y-auto
+            transition-transform duration-300 ease-in-out
+          `}
+          style={{ top: '88px', height: 'calc(100vh - 88px)' }}>
+            <div className="mb-6">
+              <div className="flex justify-between items-center mb-3">
+                <h3 className="font-semibold text-gray-700 flex items-center gap-2">
+                  <FaUsers />
+                  Mes salons ({rooms.length})
+                </h3>
+                <button
+                  onClick={() => setIsCreateRoomModalOpen(true)}
+                  className="bg-gray-600 hover:bg-gray-700 text-white p-2 rounded-lg transition"
+                  title="Créer un salon"
                 >
-                  <div className="w-2 h-2 bg-green-400 rounded-full"></div>
-                  <span className="text-sm font-medium text-gray-700">
-                    {connectedUser.username}
-                  </span>
-                </div>
-              ))}
+                  <FaPlus />
+                </button>
+              </div>
+              <div className="space-y-2">
+                <button
+                  onClick={() => {
+                    if (currentRoom) leaveRoom();
+                  }}
+                  className={`w-full text-left p-2 rounded-lg transition ${
+                    !currentRoom
+                      ? 'bg-gray-600 text-white'
+                      : 'bg-white hover:bg-gray-100 text-gray-700 border'
+                  }`}
+                >
+                  <div className="flex items-center gap-2">
+                    <FaComments />
+                    <span className="font-medium">Chat Général</span>
+                  </div>
+                </button>
+                {rooms.map((room) => (
+                  <button
+                    key={room.id}
+                    onClick={() => joinRoom(room)}
+                    className={`w-full text-left p-2 rounded-lg transition ${
+                      currentRoom?.id === room.id
+                        ? 'bg-gray-600 text-white'
+                        : 'bg-white hover:bg-gray-100 text-gray-700 border'
+                    }`}
+                  >
+                    <div className="flex items-center gap-2">
+                      <FaDoorOpen />
+                      <div>
+                        <div className="font-medium">{room.name}</div>
+                        <div className="text-xs opacity-75">
+                          {room.memberIds.length} membre{room.memberIds.length > 1 ? 's' : ''}
+                        </div>
+                      </div>
+                    </div>
+                  </button>
+                ))}
+              </div>
             </div>
+
+            {!currentRoom && (
+              <div>
+                <h3 className="font-semibold text-gray-700 mb-3">
+                  Utilisateurs connectés ({connectedUsers.length})
+                </h3>
+                <div className="space-y-2">
+                  {connectedUsers.map((connectedUser) => (
+                    <div
+                      key={connectedUser.id}
+                      className="flex items-center gap-2 p-2 bg-white rounded-lg border"
+                    >
+                      <div className="w-2 h-2 bg-green-400 rounded-full"></div>
+                      <span className="text-sm font-medium text-gray-700">
+                        {connectedUser.username}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
 
           <div className="flex-1 flex flex-col">
@@ -358,7 +552,6 @@ export default function Chat({ user: initialUser, onLogout }: ChatProps) {
                         
                         {Object.entries(reactionIcons).map(([key, { icon, label }]) => {
                           const count = message.reactions?.[key]?.length || 0;
-                          
                           if (count > 0) return null;
                           
                           return (
@@ -421,6 +614,14 @@ export default function Chat({ user: initialUser, onLogout }: ChatProps) {
         isOpen={isProfileModalOpen}
         onClose={() => setIsProfileModalOpen(false)}
         onUserUpdate={setUser}
+      />
+
+      <CreateRoomModal
+        isOpen={isCreateRoomModalOpen}
+        onClose={() => setIsCreateRoomModalOpen(false)}
+        onRoomCreated={handleRoomCreated}
+        connectedUsers={connectedUsers}
+        currentUserId={user.id}
       />
     </div>
   );
