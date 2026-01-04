@@ -1,18 +1,16 @@
 import { Module } from '@nestjs/common';
-import { TypeOrmModule } from '@nestjs/typeorm';
+import { JwtModule } from '@nestjs/jwt';
 import { ChatGateway } from './chat.gateway';
-import { ChatService } from './chat.service';
-import { Room } from './entities/room.entity';
-import { Message } from './entities/message.entity';
-import { RoomMember } from './entities/room-member.entity';
-import { Reaction } from './entities/reaction.entity';
-import { User } from '../users/user.entity';
+import { UsersModule } from '../users/users.module';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([Room, Message, RoomMember, Reaction, User]),
+    UsersModule,
+    JwtModule.register({
+      secret: 'your-secret-key',
+      signOptions: { expiresIn: '7d' },
+    }),
   ],
-  providers: [ChatGateway, ChatService],
-  exports: [ChatService],
+  providers: [ChatGateway],
 })
 export class ChatModule {}

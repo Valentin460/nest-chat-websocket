@@ -1,172 +1,143 @@
 import {
   WebSocketGateway,
-  SubscribeMessage,
-  MessageBody,
   WebSocketServer,
-  ConnectedSocket,
+  SubscribeMessage,
   OnGatewayConnection,
   OnGatewayDisconnect,
+  MessageBody,
+  ConnectedSocket,
 } from '@nestjs/websockets';
 import { Server, Socket } from 'socket.io';
-import { ChatService } from './chat.service';
-import {
-  SendMessageDto,
-  AddReactionDto,
-  TypingDto,
-  CreateRoomDto,
-} from './dto/create-room.dto';
+import { JwtService } from '@nestjs/jwt';
+import { UsersService } from '../users/users.service';
 
-@WebSocketGateway({ cors: true })
+interface ConnectedUser {
+  id: number;
+  username: string;
+  email: string;
+}
+
+@WebSocketGateway({
+  cors: {
+    origin: 'http://localhost:3000',
+    credentials: true,
+  },
+})
 export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
   @WebSocketServer()
   server: Server;
 
-  private typingUsers: Map<number, Set<string>> = new Map();
+  private connectedUsers: Map<string, ConnectedUser> = new Map();
+  private typingUsers: Map<string, ConnectedUser> = new Map();
 
-  constructor(private chatService: ChatService) {}
+  constructor(
+    private jwtService: JwtService,
+    private usersService: UsersService,
+  ) {}
 
-  handleConnection(client: Socket) {
-    console.log(`Client connected: ${client.id}`);
+  async handleConnection(client: Socket) {
+    try {
+      const token = client.handshake.auth.token;
+      if (!token) {
+        client.disconnect();
+        return;
+      }
+
+      const payload = this.jwtService.verify(token);
+      const user = await this.usersService.findById(payload.sub);
+
+      if (!user) {
+        client.disconnect();
+        return;
+      }
+
+      const connectedUser: ConnectedUser = {
+        id: user.id,
+        username: user.username,
+        email: user.email,
+      };
+
+      this.connectedUsers.set(client.id, connectedUser);
+      client.join('general');
+
+      this.server.to('general').emit('userJoined', {
+        username: user.username,
+        message: `${user.username} a rejoint le chat`,
+        timestamp: new Date().toISOString(),
+      });
+
+      this.server.to('general').emit('connectedUsers', 
+        Array.from(this.connectedUsers.values())
+      );
+
+      console.log(`Utilisateur ${user.username} connecté au chat`);
+    } catch (error) {
+      console.error('Erreur de connexion:', error);
+      client.disconnect();
+    }
   }
 
   handleDisconnect(client: Socket) {
-    console.log(`Client disconnected: ${client.id}`);
-  }
+    const user = this.connectedUsers.get(client.id);
+    if (user) {
+      this.connectedUsers.delete(client.id);
+      
+      this.server.to('general').emit('userLeft', {
+        username: user.username,
+        message: `${user.username} a quitté le chat`,
+        timestamp: new Date().toISOString(),
+      });
 
-  @SubscribeMessage('joinGeneral')
-  async handleJoinGeneral(
-    @MessageBody() data: { userId: number },
-    @ConnectedSocket() client: Socket,
-  ) {
-    await this.chatService.joinGeneralRoom(data.userId);
-    const room = await this.chatService.getGeneralRoom();
-
-    if (!room) {
-      throw new Error('General room not found');
-    }
-
-    void client.join(`room-${room.id}`);
-
-    const messages = await this.chatService.getRoomMessages(
-      room.id,
-      data.userId,
-    );
-
-    return { roomId: room.id, messages };
-  }
-
-  @SubscribeMessage('createRoom')
-  async handleCreateRoom(
-    @MessageBody() data: CreateRoomDto & { creatorId: number },
-  ) {
-    try {
-      const room = await this.chatService.createRoom(
-        data.name,
-        data.creatorId,
-        data.memberIds,
-        data.giveHistoryAccess,
+      this.server.to('general').emit('connectedUsers', 
+        Array.from(this.connectedUsers.values())
       );
 
-      // Émettre à tous les membres (créateur + invités)
-      const allMemberIds = [data.creatorId, ...data.memberIds];
-      for (const memberId of allMemberIds) {
-        this.server.to(`user-${memberId}`).emit('newRoom', room);
-      }
-
-      return room;
-    } catch (error) {
-      console.error('Erreur lors de la création du salon:', error);
-      return { error: 'Erreur lors de la création du salon' };
+      console.log(`Utilisateur ${user.username} déconnecté du chat`);
     }
-  }
-
-  @SubscribeMessage('joinRoom')
-  async handleJoinRoom(
-    @MessageBody() data: { roomId: number; userId: number },
-    @ConnectedSocket() client: Socket,
-  ) {
-    void client.join(`room-${data.roomId}`);
-
-    const messages = await this.chatService.getRoomMessages(
-      data.roomId,
-      data.userId,
-    );
-
-    return { messages };
   }
 
   @SubscribeMessage('sendMessage')
-  async handleMessage(@MessageBody() data: SendMessageDto) {
-    // Persist the message and return the saved message (with relations)
-    const sentMessage = await this.chatService.sendMessage(
-      data.roomId,
-      data.userId,
-      data.content,
-    );
+  handleMessage(
+    @MessageBody() data: { message: string },
+    @ConnectedSocket() client: Socket,
+  ) {
+    const user = this.connectedUsers.get(client.id);
+    if (!user) return;
 
-    this.server.to(`room-${data.roomId}`).emit('newMessage', sentMessage);
+    const messageData = {
+      id: Date.now(),
+      username: user.username,
+      message: data.message,
+      timestamp: new Date().toISOString(),
+    };
 
-    const typingSet = this.typingUsers.get(data.roomId);
-    if (typingSet) {
-      typingSet.delete(`${data.userId}`);
-      this.emitTypingUpdate(data.roomId);
-    }
-
-    return sentMessage;
+    this.server.to('general').emit('newMessage', messageData);
   }
 
-  @SubscribeMessage('addReaction')
-  async handleReaction(@MessageBody() data: AddReactionDto) {
-    await this.chatService.addReaction(data.messageId, data.userId, data.emoji);
-    this.server.emit('reactionUpdated', data.messageId);
-    return { success: true };
+  @SubscribeMessage('getConnectedUsers')
+  handleGetConnectedUsers(@ConnectedSocket() client: Socket) {
+    client.emit('connectedUsers', Array.from(this.connectedUsers.values()));
   }
 
-  @SubscribeMessage('typing')
-  handleTyping(@MessageBody() data: TypingDto) {
-    if (!this.typingUsers.has(data.roomId)) {
-      this.typingUsers.set(data.roomId, new Set());
-    }
+  @SubscribeMessage('startTyping')
+  handleStartTyping(@ConnectedSocket() client: Socket) {
+    const user = this.connectedUsers.get(client.id);
+    if (!user) return;
 
-    const typingSet = this.typingUsers.get(data.roomId);
-    if (!typingSet) return;
-
-    typingSet.add(`${data.userId}:${data.username}`);
-    this.emitTypingUpdate(data.roomId);
-
-    setTimeout(() => {
-      const currentSet = this.typingUsers.get(data.roomId);
-      if (currentSet) {
-        currentSet.delete(`${data.userId}:${data.username}`);
-        this.emitTypingUpdate(data.roomId);
-      }
-    }, 3000);
+    this.typingUsers.set(client.id, user);
+    
+    const typingUsernames = Array.from(this.typingUsers.values()).map(u => u.username);
+    this.server.to('general').emit('typingUsers', typingUsernames);
   }
 
   @SubscribeMessage('stopTyping')
-  handleStopTyping(@MessageBody() data: { roomId: number; userId: number }) {
-    const typingSet = this.typingUsers.get(data.roomId);
-    if (!typingSet) return;
+  handleStopTyping(@ConnectedSocket() client: Socket) {
+    const user = this.connectedUsers.get(client.id);
+    if (!user) return;
 
-    const filtered = Array.from(typingSet).filter(
-      (u) => !u.startsWith(`${data.userId}:`),
-    );
-    this.typingUsers.set(data.roomId, new Set(filtered));
-    this.emitTypingUpdate(data.roomId);
-  }
-
-  private emitTypingUpdate(roomId: number) {
-    const users = this.typingUsers.get(roomId);
-    const usernames = users
-      ? Array.from(users).map((u) => u.split(':')[1])
-      : [];
-    this.server
-      .to(`room-${roomId}`)
-      .emit('typingUpdate', { roomId, usernames });
-  }
-
-  @SubscribeMessage('getRooms')
-  async handleGetRooms(@MessageBody() data: { userId: number }) {
-    return this.chatService.getUserRooms(data.userId);
+    this.typingUsers.delete(client.id);
+    
+    const typingUsernames = Array.from(this.typingUsers.values()).map(u => u.username);
+    this.server.to('general').emit('typingUsers', typingUsernames);
   }
 }
