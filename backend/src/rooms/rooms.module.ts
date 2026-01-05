@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { Module, forwardRef } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { JwtModule } from '@nestjs/jwt';
 import { RoomsController } from './rooms.controller';
@@ -10,7 +10,7 @@ import { UsersModule } from '../users/users.module';
 @Module({
   imports: [
     TypeOrmModule.forFeature([Room, RoomMessage]),
-    UsersModule,
+    forwardRef(() => UsersModule),
     JwtModule.register({
       secret: 'your-secret-key',
       signOptions: { expiresIn: '7d' },

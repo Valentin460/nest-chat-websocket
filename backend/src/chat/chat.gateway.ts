@@ -96,13 +96,19 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
         take: 100,
       });
 
-      const formattedHistory = chatHistory.map(msg => ({
-        id: msg.id,
-        username: msg.username,
-        message: msg.message,
-        timestamp: msg.createdAt.toISOString(),
-        reactions: msg.reactions || {},
-      }));
+      const formattedHistory = await Promise.all(
+        chatHistory.map(async (msg) => {
+          const msgUser = await this.usersService.findById(msg.userId);
+          return {
+            id: msg.id,
+            username: msg.username,
+            message: msg.message,
+            timestamp: msg.createdAt.toISOString(),
+            reactions: msg.reactions || {},
+            displayColor: msgUser?.displayColor || null,
+          };
+        })
+      );
 
       client.emit('chatHistory', formattedHistory);
 
@@ -141,6 +147,8 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     if (!user) return;
 
     try {
+      const fullUser = await this.usersService.findById(user.id);
+      
       const savedMessage = await this.chatMessageRepository.save({
         userId: user.id,
         username: user.username,
@@ -153,6 +161,7 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
         username: user.username,
         message: data.message,
         timestamp: savedMessage.createdAt.toISOString(),
+        displayColor: fullUser?.displayColor || null,
       };
 
       this.server.to('general').emit('newMessage', messageData);
@@ -342,6 +351,8 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     if (!user) return;
 
     try {
+      const fullUser = await this.usersService.findById(user.id);
+      
       const savedMessage = await this.roomsService.saveMessage(
         data.roomId,
         user.id,
@@ -352,6 +363,7 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
       this.server.to(`room-${data.roomId}`).emit('newRoomMessage', {
         ...savedMessage,
         timestamp: savedMessage.createdAt.toISOString(),
+        displayColor: fullUser?.displayColor || null,
       });
     } catch (error) {
       client.emit('error', { message: error.message });

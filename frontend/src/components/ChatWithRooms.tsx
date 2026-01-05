@@ -28,6 +28,7 @@ interface Message {
   message: string;
   timestamp: string;
   reactions?: Record<string, string[]>;
+  displayColor?: string | null;
 }
 
 interface ConnectedUser {
@@ -191,6 +192,26 @@ export default function ChatWithRooms({ user: initialUser, onLogout }: ChatProps
           msg.id === data.messageId ? { ...msg, reactions: data.reactions } : msg
         )
       );
+    });
+
+    newSocket.on('userColorChanged', (data: { userId: number; username: string; displayColor: string }) => {
+      console.log('🎨 Couleur changée pour', data.username, ':', data.displayColor);
+      
+      setGeneralChatMessages((prev) =>
+        prev.map((msg) =>
+          msg.username === data.username ? { ...msg, displayColor: data.displayColor } : msg
+        )
+      );
+      
+      setMessages((prev) =>
+        prev.map((msg) =>
+          msg.username === data.username ? { ...msg, displayColor: data.displayColor } : msg
+        )
+      );
+      
+      if (data.userId === user.id) {
+        setUser((prevUser) => ({ ...prevUser, displayColor: data.displayColor }));
+      }
     });
 
     setSocket(newSocket);
@@ -501,18 +522,20 @@ export default function ChatWithRooms({ user: initialUser, onLogout }: ChatProps
                       className={`max-w-xs lg:max-w-md px-4 py-2 rounded-lg ${
                         message.username === 'Système'
                           ? 'bg-yellow-100 text-yellow-800 text-center italic'
-                          : message.username === user.username
-                          ? 'text-white'
-                          : 'bg-white text-gray-800 border'
+                          : 'text-white'
                       }`}
                       style={
-                        message.username === user.username
-                          ? { backgroundColor: user.displayColor || '#6B7280' }
+                        message.username !== 'Système'
+                          ? { 
+                              backgroundColor: message.username === user.username 
+                                ? (user.displayColor || '#6B7280')
+                                : (message.displayColor || '#6B7280')
+                            }
                           : {}
                       }
                     >
                       {message.username !== 'Système' && message.username !== user.username && (
-                        <div className="text-xs font-semibold text-gray-600 mb-1">
+                        <div className="text-xs font-semibold text-white opacity-90 mb-1">
                           {message.username}
                         </div>
                       )}

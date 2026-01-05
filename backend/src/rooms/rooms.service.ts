@@ -5,6 +5,7 @@ import { Room } from './entities/room.entity';
 import { RoomMessage } from './entities/room-message.entity';
 import { CreateRoomDto } from './dto/create-room.dto';
 import { AddMemberDto } from './dto/add-member.dto';
+import { UsersService } from '../users/users.service';
 
 @Injectable()
 export class RoomsService {
@@ -13,6 +14,7 @@ export class RoomsService {
     private roomsRepository: Repository<Room>,
     @InjectRepository(RoomMessage)
     private roomMessagesRepository: Repository<RoomMessage>,
+    private usersService: UsersService,
   ) {}
 
   async createRoom(creatorId: number, createRoomDto: CreateRoomDto): Promise<Room> {
@@ -101,7 +103,7 @@ export class RoomsService {
     return this.roomMessagesRepository.save(roomMessage);
   }
 
-  async getRoomMessages(roomId: number, userId: number): Promise<RoomMessage[]> {
+  async getRoomMessages(roomId: number, userId: number): Promise<any[]> {
     const room = await this.getRoomById(roomId);
 
     const memberIds = Array.isArray(room.memberIds) 
@@ -118,12 +120,23 @@ export class RoomsService {
       order: { createdAt: 'ASC' },
     });
 
-    if (userPermissions.hasHistoryAccess) {
-      return allMessages;
+    let filteredMessages = allMessages;
+    if (!userPermissions.hasHistoryAccess) {
+      const joinedAt = new Date(userPermissions.joinedAt);
+      filteredMessages = allMessages.filter(msg => new Date(msg.createdAt) >= joinedAt);
     }
 
-    const joinedAt = new Date(userPermissions.joinedAt);
-    return allMessages.filter(msg => new Date(msg.createdAt) >= joinedAt);
+    const messagesWithColor = await Promise.all(
+      filteredMessages.map(async (msg) => {
+        const msgUser = await this.usersService.findById(msg.userId);
+        return {
+          ...msg,
+          displayColor: msgUser?.displayColor || null,
+        };
+      })
+    );
+
+    return messagesWithColor;
   }
 
   async updateMessageReactions(
