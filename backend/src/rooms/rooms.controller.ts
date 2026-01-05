@@ -1,17 +1,28 @@
-import { Controller, Post, Get, Body, Param, UseGuards, Request } from '@nestjs/common';
+import { Controller, Post, Get, Body, Param, UseGuards, Request, Inject, forwardRef } from '@nestjs/common';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { RoomsService } from './rooms.service';
 import { CreateRoomDto } from './dto/create-room.dto';
 import { AddMemberDto } from './dto/add-member.dto';
+import { ChatGateway } from '../chat/chat.gateway';
 
 @Controller('rooms')
 @UseGuards(JwtAuthGuard)
 export class RoomsController {
-  constructor(private readonly roomsService: RoomsService) {}
+  constructor(
+    private readonly roomsService: RoomsService,
+    @Inject(forwardRef(() => ChatGateway))
+    private readonly chatGateway: ChatGateway,
+  ) {}
 
   @Post()
   async createRoom(@Request() req, @Body() createRoomDto: CreateRoomDto) {
     const room = await this.roomsService.createRoom(req.user.sub, createRoomDto);
+    
+    this.chatGateway.server.emit('roomCreated', {
+      room,
+      memberIds: room.memberIds,
+    });
+    
     return {
       room,
       message: 'Salon créé avec succès',

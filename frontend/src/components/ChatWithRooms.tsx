@@ -214,12 +214,20 @@ export default function ChatWithRooms({ user: initialUser, onLogout }: ChatProps
       }
     });
 
+    newSocket.on('roomCreated', (data: { room: Room; memberIds: number[] }) => {
+      console.log('Nouveau salon créé:', data.room.name);
+      if (data.memberIds.includes(user.id)) {
+        console.log('Ajout du salon à la liste');
+        setRooms((prev) => [...prev, data.room]);
+      }
+    });
+
     setSocket(newSocket);
 
     return () => {
       newSocket.close();
     };
-  }, [onLogout, user.username]);
+  }, [onLogout, user.username, user.id]);
 
   const sendMessage = (e: React.FormEvent) => {
     e.preventDefault();

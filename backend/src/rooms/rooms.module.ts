@@ -6,11 +6,13 @@ import { RoomsService } from './rooms.service';
 import { Room } from './entities/room.entity';
 import { RoomMessage } from './entities/room-message.entity';
 import { UsersModule } from '../users/users.module';
+import { ChatModule } from '../chat/chat.module';
 
 @Module({
   imports: [
     TypeOrmModule.forFeature([Room, RoomMessage]),
     forwardRef(() => UsersModule),
+    forwardRef(() => ChatModule),
     JwtModule.register({
       secret: 'your-secret-key',
       signOptions: { expiresIn: '7d' },
